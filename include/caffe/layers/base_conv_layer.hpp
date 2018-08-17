@@ -97,6 +97,7 @@ class BaseConvolutionLayer : public Layer<Dtype> {
   // wrap im2col/col2im so we don't have to remember the (long) argument lists
   inline void conv_im2col_cpu(const Dtype* data, Dtype* col_buff) {
     if (!force_nd_im2col_ && num_spatial_axes_ == 2) {
+      // Generating Cin by one single input feature map.
       im2col_cpu(data, conv_in_channels_,
           conv_input_shape_.cpu_data()[1], conv_input_shape_.cpu_data()[2],
           kernel_shape_.cpu_data()[0], kernel_shape_.cpu_data()[1],
@@ -111,6 +112,8 @@ class BaseConvolutionLayer : public Layer<Dtype> {
   }
   inline void conv_col2im_cpu(const Dtype* col_buff, Dtype* data) {
     if (!force_nd_im2col_ && num_spatial_axes_ == 2) {
+      // This function is the reverse of conv_im2col_cpu. It transforms Bf into the form
+      // which is the same as the input feature map.
       col2im_cpu(col_buff, conv_in_channels_,
           conv_input_shape_.cpu_data()[1], conv_input_shape_.cpu_data()[2],
           kernel_shape_.cpu_data()[0], kernel_shape_.cpu_data()[1],

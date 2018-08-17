@@ -34,14 +34,18 @@ void im2col_cpu(const Dtype* data_im, const int channels,
         for (int output_rows = output_h; output_rows; output_rows--) {
           if (!is_a_ge_zero_and_a_lt_b(input_row, height)) {
             for (int output_cols = output_w; output_cols; output_cols--) {
+              // Pad up and below with 0 (the size of the two sides is identical).
               *(data_col++) = 0;
             }
           } else {
             int input_col = -pad_w + kernel_col * dilation_w;
             for (int output_col = output_w; output_col; output_col--) {
               if (is_a_ge_zero_and_a_lt_b(input_col, width)) {
+                // Select all the elements corresponding to the same order in every
+                // convolutional window and arrange them in a row successively.
                 *(data_col++) = data_im[input_row * width + input_col];
               } else {
+                // Pad left and right with 0 (the size of the two sides is identical).
                 *(data_col++) = 0;
               }
               input_col += stride_w;
@@ -178,13 +182,16 @@ void col2im_cpu(const Dtype* data_col, const int channels,
         int input_row = -pad_h + kernel_row * dilation_h;
         for (int output_rows = output_h; output_rows; output_rows--) {
           if (!is_a_ge_zero_and_a_lt_b(input_row, height)) {
+            // Skip these addresses, because they are corresponding to padding zone(up and below).
             data_col += output_w;
           } else {
             int input_col = -pad_w + kernel_col * dilation_w;
             for (int output_col = output_w; output_col; output_col--) {
               if (is_a_ge_zero_and_a_lt_b(input_col, width)) {
+                // This expression is the reverse of the corresponding one in im2col_cpu.
                 data_im[input_row * width + input_col] += *data_col;
               }
+              // Skip these addresses, because they are corresponding to padding zone(left and right).
               data_col++;
               input_col += stride_w;
             }

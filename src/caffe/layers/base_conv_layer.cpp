@@ -212,6 +212,9 @@ void BaseConvolutionLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom,
   } else {
     conv_out_spatial_dim_ = top[0]->count(first_spatial_axis);
   }
+  // !!! It seems that this expression should be
+  // !!! col_offset_ = kernel_dim_ * conv_out_spatial_dim_ / group_
+  // !!! When group_ isn't 1, there would be some problems with the expression below.
   col_offset_ = kernel_dim_ * conv_out_spatial_dim_;
   output_offset_ = conv_out_channels_ * conv_out_spatial_dim_ / group_;
   // Setup input dimensions (conv_input_shape_).
@@ -258,10 +261,22 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
   const Dtype* col_buff = input;
   if (!is_1x1_) {
     if (!skip_im2col) {
+      // Generating Cin by one single input feature map.
       conv_im2col_cpu(input, col_buffer_.mutable_cpu_data());
     }
+    // col_buff is the pointer of matrix Cin.
     col_buff = col_buffer_.cpu_data();
   }
+  // The following takes caffe's example mnist as example to explain the value of every parameter.
+  // The value of these parameters are as follows when the solver forwarding into the conv2 layer.
+  // group_ = 1(usually is 1)
+  // conv_out_channels_ = c1 = 50
+  // conv_out_spatial_dim_ = ho * wo = 8 * 8 = 64
+  // kernel_dim_ = c(the number of channels of bottom) * h1 * w1 = 20 * 5 * 5 = 500
+  // weight_offset_ = conv_out_channels_ * kernel_dim_ / group_ = 50 * 500 / 1 = 25000
+  // col_offset_ = kernel_dim_ * conv_out_spatial_dim_ / group_ = 500 * 64 / 1 = 32000
+  // output_offset_ = conv_out_channels_ * conv_out_spatial_dim_ / group_ = 50 * 64 / 1 = 3200
+  // This function computes Cout = W X Cin.
   for (int g = 0; g < group_; ++g) {
     caffe_cpu_gemm<Dtype>(CblasNoTrans, CblasNoTrans, conv_out_channels_ /
         group_, conv_out_spatial_dim_, kernel_dim_,
@@ -273,6 +288,12 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 template <typename Dtype>
 void BaseConvolutionLayer<Dtype>::forward_cpu_bias(Dtype* output,
     const Dtype* bias) {
+  // The following takes caffe's example mnist as example to explain the value of every parameter.
+  // The value of these parameters are as follows when the solver forwarding into the conv2 layer.
+  // num_output_ = c1 = 50
+  // out_spatial_dim_ = ho * wo = 8 * 8 = 64
+  // bias_multiplier_ is the Blob of I(dimension h * w = 1 * out_spatial_dim_ = 1 * 64).
+  // This function computes Cout = Cout + b X I.
   caffe_cpu_gemm<Dtype>(CblasNoTrans, CblasNoTrans, num_output_,
       out_spatial_dim_, 1, (Dtype)1., bias, bias_multiplier_.cpu_data(),
       (Dtype)1., output);
@@ -281,17 +302,30 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_bias(Dtype* output,
 template <typename Dtype>
 void BaseConvolutionLayer<Dtype>::backward_cpu_gemm(const Dtype* output,
     const Dtype* weights, Dtype* input) {
+  // col_buff is the pointer of matrix Bf.
   Dtype* col_buff = col_buffer_.mutable_cpu_data();
   if (is_1x1_) {
     col_buff = input;
   }
   for (int g = 0; g < group_; ++g) {
+    // The following takes caffe's example mnist as example to explain the value of every parameter.
+    // The value of these parameters are as follows when the solver backwarding into the conv2 layer.
+    // group_ = 1(usually is 1)
+    // kernel_dim_ = c(the number of channels of bottom) * h1 * w1 = 20 * 5 * 5 = 500
+    // conv_out_spatial_dim_ = ho * wo = 8 * 8 = 64
+    // conv_out_channels_ = c1 = 50
+    // weight_offset_ = conv_out_channels_ * kernel_dim_ / group_ = 50 * 500 / 1 = 25000
+    // output_offset_ = conv_out_channels_ * conv_out_spatial_dim_ / group_ = 50 * 64 / 1 = 3200
+    // col_offset_ = kernel_dim_ * conv_out_spatial_dim_ / group_ = 500 * 64 / 1 = 32000
+    // This function computes Bf = W^T X Tf.
     caffe_cpu_gemm<Dtype>(CblasTrans, CblasNoTrans, kernel_dim_,
         conv_out_spatial_dim_, conv_out_channels_ / group_,
         (Dtype)1., weights + weight_offset_ * g, output + output_offset_ * g,
         (Dtype)0., col_buff + col_offset_ * g);
   }
   if (!is_1x1_) {
+    // This function is the reverse of conv_im2col_cpu. It transforms Bf into the form
+    // which is the same as the input feature map.
     conv_col2im_cpu(col_buff, input);
   }
 }
@@ -301,10 +335,22 @@ void BaseConvolutionLayer<Dtype>::weight_cpu_gemm(const Dtype* input,
     const Dtype* output, Dtype* weights) {
   const Dtype* col_buff = input;
   if (!is_1x1_) {
+    // Generate Cin from input feature map.
     conv_im2col_cpu(input, col_buffer_.mutable_cpu_data());
+    // col_buff is the pointer of matrix Cin.
     col_buff = col_buffer_.cpu_data();
   }
   for (int g = 0; g < group_; ++g) {
+    // The following takes caffe's example mnist as example to explain the value of every parameter.
+    // The value of these parameters are as follows when the solver backwarding into the conv2 layer.
+    // group_ = 1(usually is 1)
+    // conv_out_channels_ = c1 = 50
+    // kernel_dim_ = c(the number of channels of bottom) * h1 * w1 = 20 * 5 * 5 = 500
+    // conv_out_spatial_dim_ = ho * wo = 8 * 8 = 64
+    // output_offset_ = conv_out_channels_ * conv_out_spatial_dim_ / group_ = 50 * 64 / 1 = 3200
+    // col_offset_ = kernel_dim_ * conv_out_spatial_dim_ / group_ = 500 * 64 / 1 = 32000
+    // weight_offset_ = conv_out_channels_ * kernel_dim_ / group_ = 50 * 500 / 1 = 25000
+    // This function computes Wf = Wf + Tf X Cin^T.
     caffe_cpu_gemm<Dtype>(CblasNoTrans, CblasTrans, conv_out_channels_ / group_,
         kernel_dim_, conv_out_spatial_dim_,
         (Dtype)1., output + output_offset_ * g, col_buff + col_offset_ * g,
@@ -315,6 +361,12 @@ void BaseConvolutionLayer<Dtype>::weight_cpu_gemm(const Dtype* input,
 template <typename Dtype>
 void BaseConvolutionLayer<Dtype>::backward_cpu_bias(Dtype* bias,
     const Dtype* input) {
+  // The following takes caffe's example mnist as example to explain the value of every parameter.
+  // The value of these parameters are as follows when the solver backwarding into the conv2 layer.
+  // num_output_ = c1 = 50
+  // out_spatial_dim_ = ho * wo = 8 * 8 = 64
+  // bias_multiplier_ is the Blob of I(dimension h * w = 1 * out_spatial_dim_ = 1 * 64).
+  // This function computes bf = bf + Tf X I^T.
   caffe_cpu_gemv<Dtype>(CblasNoTrans, num_output_, out_spatial_dim_, 1.,
       input, bias_multiplier_.cpu_data(), 1., bias);
 }
