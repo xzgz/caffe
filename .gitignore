@@ -81,7 +81,7 @@ build-cmake-cpu-debug/*
 build-cmake-multigpu/*
 build-cmake-singlegpu-rnc/*
 examples/*
-!examples/images/*
+!examples/images
 distribute/*
 *.testbin
 *.bin
