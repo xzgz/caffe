@@ -80,7 +80,7 @@ build-release/
 build-cmake-cpu-debug/*
 build-cmake-multigpu/*
 build-cmake-singlegpu-rnc/*
-examples/
+examples/*
 !examples/images/
 distribute/*
 *.testbin
