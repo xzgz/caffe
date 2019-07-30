@@ -75,13 +75,8 @@ models/*
 build
 .build_debug/*
 .build_release/*
-build-debug/
-build-release/
-build-cmake-cpu-debug/*
-build-cmake-multigpu/*
-build-cmake-singlegpu-rnc/*
-cmake-build*
-build*
+build*/*
+cmake-build*/*
 examples/*
 !examples/images/
 distribute/*
